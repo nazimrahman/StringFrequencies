@@ -9,6 +9,8 @@ class StringFrequency
 	var $aWordFrequencies;	// array of word frequencies
 	var $sExclusionList;	// exclusion list address
 	var $sFilter;			// set a filter
+	var $iWordCount;		// how many word for multiword strings
+	var $aMultiWordFrequencies;		
 
 	function __construct() {
 		// initialize members to default values
@@ -19,6 +21,8 @@ class StringFrequency
 		$this->aWordFrequencies = array();
 		$this->sExclusionList = 'exclusionlists/el-1.txt';
 		$this->sFilter = '';
+		$this->iWordCount = 1;
+		$this->aMultiWordFrequencies = array();
 	}
 
 	public function setSourceAddress($address) {
@@ -53,6 +57,80 @@ class StringFrequency
 			$this->buildWordFrequencies();
 		}
 		return $this->aWordFrequencies;
+	}
+
+	public function getMultiWordFrequencies($word_count) {
+		$this->iWordCount = $word_count;
+		$this->buildMultiWordFrequencies();
+		return $this->aMultiWordFrequencies;
+	}
+
+	private function buildMultiWordFrequencies() {
+		// preprocess steps
+		if (count($this->aLines) < 2) {
+			$this->transformToLines();
+			$this->cleanText();
+		}
+
+		// initialize local variables
+		$aWords = array();
+		$aMultiWord = array();
+		$aMultiWordFreq = array();
+
+		// for every sentence
+		foreach ($this->aSentences as $sSentence) {
+			
+			// split into words
+			$aWords = preg_split("/ /", $sSentence);
+
+			// remove empty words, spaces
+			for ($i = 0; $i < count($aWords); $i++) {
+				$aWords[$i] = preg_replace("/ /", '', $aWords[$i]);
+				if (!preg_match("/[A-Za-z0-9]/", $aWords[$i])) {
+					array_splice($aWords, $i, 1);
+				} 
+			}
+
+			// if count words is less than multiword size
+			if (count($aWords) < $this->iWordCount) {
+				// do nothing
+			} else {
+				// sliding window
+				$cnt = count($aWords) - $this->iWordCount + 1;
+				for ($i = 0; $i < $cnt; $i++) {
+					$ct = $this->iWordCount + $i;
+					$aMulti = array();
+					for ($j = $i; $j < $ct; $j++) {
+						$aMulti[] = $aWords[$j];
+					}
+					$aMultiWord[] = implode(" ", $aMulti);
+				}
+			}
+		}
+
+		// restructure to [substring] = frequency format
+		foreach ($aMultiWord as $mw) {
+			if (isset($aMultiWordFreq[$mw])) {
+				if (array_search($mw, $aMultiWordFreq, true)) {
+					$aMultiWordFreq[$mw] = 1;	
+				} else {
+					$aMultiWordFreq[$mw]++; 
+				}
+			} else {
+				$aMultiWordFreq[$mw] = 1;
+			}
+		}
+
+		// reverse sort by frequency
+		arsort($aMultiWordFreq);
+
+		// save to class variable
+		$this->aMultiWordFrequencies = $aMultiWordFreq;
+
+		// release memory
+		unset($aWords);
+		unset($aMultiWord);
+		unset($aMultiWordFreq);
 	}
 
 	private function buildWordFrequencies() {
@@ -108,7 +186,7 @@ class StringFrequency
       		$line = trim($line);
 
       		// replace non ASCII characters with spaces
-      		$line = preg_replace('/[[:^print:]\(\)\&\/@:*]/', ' ', $line);
+      		$line = preg_replace('/[[:^print:]\(\)\&\/@:*,]/', ' ', $line);
 
       		// other terms to remove
       		$aExclude = file($this->sExclusionList);
